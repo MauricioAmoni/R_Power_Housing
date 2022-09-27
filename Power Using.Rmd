@@ -1,0 +1,264 @@
+---
+title: "Power Housing Analitics"
+author: "Mauricio Amoni"
+date: '2022-09-27'
+output: html_document
+
+---
+
+
+# Power Consumption Analysis and Forecasting: Visualization and Analysis
+## Overview
+### Background
+
+#### We are asked to perform an in-depth analysis of the power consumption dataset for a sub-metering company. We accomplished this via data visualization and time series regression modeling.
+
+#### Objective
+
+Empower Smart Home owners with greater understanding and control of their power usage.
+Reach the developer’s goal of offering highly efficient Smart Homes that providing owners with power usage analytics.
+Provide accurate energy monitoring and forecasting for the utility company.
+Dataset Information
+
+The data was gathered in a house located in Sceaux, France. It contains the measurements of electric power consumption from 3 sub-meters in the household with a one-minute sampling rate over the period of almost 4 years.
+We collected the data from UC Irvine machine learning repository. It was stored on Amazon Web Service with a password to access for security.
+Sub-meters Information
+Sub-metering 1, Kitchen(a dishwasher, an oven and a microwave).
+Sub-metering 2, Laundry room(a washing-machine, a tumble-drier, a refrigerator and a light).
+Sub-metering 3, Electric water-heater and an air-conditioner.
+Data Visualization and Analysis Process
+Load libraies and connect to the dataset
+
+The data was stored on Amazon Web Service, we fist made a connection to connect the database.
+Then we used SQL to query all the tables we need within the database.
+We examined the structure of all the data frames, then combined all the tables into one dataframe using dplyr package.
+
+```{r eval=FALSE}
+## load the Libraries
+
+library(RMySQL)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(tibbletime)
+library(plotly)
+library(forecast)
+library(ggfortify)
+```
+
+```{r eval=FALSE}
+# Create a database connection 
+con = dbConnect(MySQL(), user='deepAnalytics', password='Sqltask1234!', 
+                dbname='dataanalytics2018', 
+                host='data-analytics-2018.cbrosir2cswx.us-east-1.rds.amazonaws.com')
+```
+
+```{r eval=FALSE}
+## List the tables contained in the database 
+dbListTables(con)
+```
+
+```{r eval=FALSE}
+## Use the dbGetQuery function to download tables and select Date, Time and the 3 sub-meter attributes
+
+yr_2006 <- dbGetQuery(con, "SELECT Date, Time, Sub_metering_1, Sub_metering_2, 
+                      Sub_metering_3 FROM yr_2006")
+
+yr_2007 <- dbGetQuery(con, "SELECT Date, Time, Sub_metering_1, Sub_metering_2, 
+                      Sub_metering_3 FROM yr_2007")
+
+yr_2008 <- dbGetQuery(con, "SELECT Date, Time, Sub_metering_1, Sub_metering_2, 
+                      Sub_metering_3 FROM yr_2008")
+
+yr_2009 <- dbGetQuery(con, "SELECT Date, Time, Sub_metering_1, Sub_metering_2, 
+                      Sub_metering_3 FROM yr_2009")
+
+yr_2010 <- dbGetQuery(con, "SELECT Date, Time, Sub_metering_1, Sub_metering_2, 
+                      Sub_metering_3 FROM yr_2010")
+
+```
+
+```{r eval=FALSE}
+## Insvestigate each new data frame
+str(yr_2006)
+str(yr_2007)
+str(yr_2008)
+str(yr_2009)
+str(yr_2010)
+summary(yr_2007)
+summary(yr_2008)
+summary(yr_2009)
+summary(yr_2010)
+```
+
+##### After investigating each data frames for each year we decided to use the ones from 2007 to 2009 these are the ones that contain complete information according to the year they represent.
+
+```{r eval=FALSE}
+## Create the Date Set
+df <- bind_rows(yr_2007, yr_2008, yr_2009)
+```
+
+```{r eval=FALSE}
+str(df)
+summary(df)
+head(df)
+```
+
+### Preprocessing
+- We combined Date and Time attributes in order to convert them to the correct format to complete the appropriate analysis
+- We named the new attribute as "DateTime and move it to the front.
+- Timezone “Europe/Paris” was assigned to DateTime attribute.
+- DateTime attribute data type was converted from character to POSIXct for future time series analysis.
+- We converted the data frame to tibbletime frame for a better visualization.
+- We also created new attributes by Year, Quarter, Month, Week, Day, Hour and 
+- Minute individually, so that we can filter the data accord in the future inspection.
+
+```{r eval=FALSE}
+## Combine Date and Time attribute values in a new attribute column
+df <-cbind(df,paste(df$Date,df$Time), stringsAsFactors=FALSE)
+
+colnames(df)[6]
+
+## Give the new attribute a header name 
+colnames(df)[6] <-"DateTime"
+
+df$DateTime <- as.POSIXct(df$DateTime,  "%Y/%m/%d %H:%M:%S")
+
+## Add the time zone
+attr(df$DateTime, "tzone") <- "Europe/Paris"
+
+## convert the dataframe to tibbletime
+
+df <- as_tbl_time(df, index = DateTime)
+head(df)
+
+## Create "year" attribute with lubridale
+df$year <- year(df$DateTime)
+
+## quarter, month, week, weekday, day, hour and minute
+
+df$quarter <- quarter(df$DateTime)
+df$month <- month(df$DateTime)
+df$week <- week(df$DateTime)
+df$weekday <- weekdays(df$DateTime)
+df$day <- day(df$DateTime)
+df$hour <- hour(df$DateTime)
+df$minute <- minute(df$DateTime)
+```
+
+### Initial Statistical Exploration
+
+- Here we used the summary() command calculate the mean, mode, standard deviation, quartiles & characterization of the distribution.
+- We also used sd() to check standard deviation, sum() for the total power consumption for individual sub-meter.
+
+```{r eval=FALSE}
+#Initial exploration
+summary(df)
+sd(df$Sub_metering_1)
+sd(df$Sub_metering_2)
+sd(df$Sub_metering_3)
+mode(df$Sub_metering_1)
+sum(df$Sub_metering_1)
+sum(df$Sub_metering_2)
+sum(df$Sub_metering_3)
+```
+
+![](Summary_df.png)
+
+- Sub-meter 1 (Kitchen) has the highest maximum power usage, while Sub-meter 3 
+- (Water Heater and AC) has the highest total power usage.
+- A suggestion for the house owner/developer is to seperate Water Heater and 
+- AC into two different sub-meters, so that we can investigate two most power 
+- consumption appliances individually.
+
+## Visualize The Data
+
+-One minute sampling rate is too frequent for our analysis. Thus, first we need to adjust granularity(frequency) to maximize the information to be gained.
+- For this project, we reduce the granularity into every 10 minutes, 30 minutes, 40 minutes and 1 hour.
+-We plotted multiple power consumption plots by the different ways we filter the data, we wanted to see if we can get any useful insights from them.
+
+```{r eval=FALSE}
+## Reduce the granularity to every 30 minutes
+df_30min <- as_period(df, '30 minute')
+
+## Subset the second week of 2008 
+houseWeek <- filter(df, year == 2008,  week == 2)
+
+## Plot subset houseWeek
+plot(houseWeek$Sub_metering_1)
+```
+
+![](houseWeek.png)
+
+- First, we plotted the consumption of sub-meter 1 for second week of 2008.
+- Power consumption appears to peek during the weekend.
+
+```{r eval=FALSE}
+## Plot sub-meter 1, 2 and 3 with title, legend and labels - All observations 
+plot_ly(houseDay, x = ~houseDay$DateTime, y = ~houseDay$Sub_metering_1, name = 'Kitchen', type = 'scatter', mode = 'lines') %>%
+  add_trace(y = ~houseDay$Sub_metering_2, name = 'Laundry Room', mode = 'lines') %>%
+  add_trace(y = ~houseDay$Sub_metering_3, name = 'Water Heater & AC', mode = 'lines') %>%
+  layout(title = "Power Consumption January 9th, 2008",
+         xaxis = list(title = "Time"),
+         yaxis = list (title = "Power (watt-hours)"))
+```
+
+
+![](Power_consumption_Jan_9_08.png)
+
+- This plot visualize the power consumption for all 3 sub-meters of Jan 9th, 2008.
+- Kitchen power consumption peeked around 5pm and 6pm.
+- Water Heater and AC peeked in whole moning and at night.
+- Laundry Room was even through out the day, probably due to the light was on.
+
+
+```{r eval=FALSE}
+# Subset week 2 from year 2008 with 30 Minutes frequency
+week2_30min_fr <- filter(df, year == 2008 & month == 1 & week == 2 & (minute == 0 | minute == 30 ))
+
+## Plot sub-meter 1, 2 and 3 with title, legend and labels - 30 Minute frequency
+plot_ly(week2_30min_fr, x = ~week2_30min_fr$DateTime, y = ~week2_30min_fr$Sub_metering_1, name = 'Kitchen', 
+        type = 'scatter', mode = 'lines') %>%
+  add_trace(y = ~week2_30min_fr$Sub_metering_2, name = 'Laundry Room', mode = 'lines') %>%
+  add_trace(y = ~week2_30min_fr$Sub_metering_3, name = 'Water Heater & AC', mode = 'lines') %>%
+  layout(title = "Power Consumption of Week 2, 2008",
+         xaxis = list(title = "Time in every 30 minutes"),
+         yaxis = list (title = "Power (watt-hours)"))
+```
+
+
+![](Power_consumption_week2_08.png)
+
+- This plot shows the power consumption of the second week of 2008 with a 30-minutes frequency.
+- Water Heater and AC consumption spread out evenly daily.
+- Laundry Room had the least consumption most of the time other than couple peeks, probably due to doing laundries.
+- Kitchen was also pretty consistent. The peeks apeared in the end of the day and the weekends, probably due to cooking.
+
+
+```{r eval=FALSE}
+## Choose monthly time period and use 60 mins interval
+df_1hr <- as_period(df, "1 h")
+df_1hr
+
+housemonth1hr <- filter(df_1hr, year == 2008 , month ==1)
+
+plot_ly(housemonth1hr, x = ~housemonth1hr$DateTime, y = ~housemonth1hr$Sub_metering_1, name = 'Kitchen', 
+        type = 'scatter', mode = 'lines') %>%
+  add_trace(y = ~housemonth1hr$Sub_metering_2, name = 'Laundry Room', mode = 'lines') %>%
+  add_trace(y = ~housemonth1hr$Sub_metering_3, name = 'Water Heater & AC', mode = 'lines') %>%
+  layout(title = "Power Consumption for Jan,2008",
+         xaxis = list(title = "Time"),
+         yaxis = list (title = "Power (watt-hours)"))
+```
+
+![](Power_consumption_Jan_08.png)
+
+
+- This plot shows the power consumption of January, 2008, with a 1-hour frequency.
+- The power consumption was consistent with the previous weekly plot. The consumption pattern repeats weekly for this month.
+
+
+### Time Series Analysis
+
+- Before we make a time-series plot, we need to create a time-series object so that the machine can recognize it as time series. We use ts() function to do so.
+- Again, we plotted multiple time series plots by the different ways we filter the data to see what insights we can get from them.
