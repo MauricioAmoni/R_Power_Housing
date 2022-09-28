@@ -33,7 +33,7 @@ The data was stored on Amazon Web Service, we fist made a connection to connect 
 Then we used SQL to query all the tables we need within the database.
 We examined the structure of all the data frames, then combined all the tables into one dataframe using dplyr package.
 
-```{r eval=FALSE}
+```{r}
 ## load the Libraries
 
 library(RMySQL)
@@ -46,19 +46,19 @@ library(forecast)
 library(ggfortify)
 ```
 
-```{r eval=FALSE}
+```{r}
 # Create a database connection 
 con = dbConnect(MySQL(), user='deepAnalytics', password='Sqltask1234!', 
                 dbname='dataanalytics2018', 
                 host='data-analytics-2018.cbrosir2cswx.us-east-1.rds.amazonaws.com')
 ```
 
-```{r eval=FALSE}
+```{r}
 ## List the tables contained in the database 
 dbListTables(con)
 ```
 
-```{r eval=FALSE}
+```{r}
 ## Use the dbGetQuery function to download tables and select Date, Time and the 3 sub-meter attributes
 
 yr_2006 <- dbGetQuery(con, "SELECT Date, Time, Sub_metering_1, Sub_metering_2, 
@@ -78,7 +78,7 @@ yr_2010 <- dbGetQuery(con, "SELECT Date, Time, Sub_metering_1, Sub_metering_2,
 
 ```
 
-```{r eval=FALSE}
+```{r}
 ## Insvestigate each new data frame
 str(yr_2006)
 str(yr_2007)
@@ -93,12 +93,12 @@ summary(yr_2010)
 
 ##### After investigating each data frames for each year we decided to use the ones from 2007 to 2009 these are the ones that contain complete information according to the year they represent.
 
-```{r eval=FALSE}
+```{r}
 ## Create the Date Set
 df <- bind_rows(yr_2007, yr_2008, yr_2009)
 ```
 
-```{r eval=FALSE}
+```{r}
 str(df)
 summary(df)
 head(df)
@@ -113,7 +113,7 @@ head(df)
 - We also created new attributes by Year, Quarter, Month, Week, Day, Hour and 
 - Minute individually, so that we can filter the data accord in the future inspection.
 
-```{r eval=FALSE}
+```{r}
 ## Combine Date and Time attribute values in a new attribute column
 df <-cbind(df,paste(df$Date,df$Time), stringsAsFactors=FALSE)
 
@@ -151,7 +151,7 @@ df$minute <- minute(df$DateTime)
 - Here we used the summary() command calculate the mean, mode, standard deviation, quartiles & characterization of the distribution.
 - We also used sd() to check standard deviation, sum() for the total power consumption for individual sub-meter.
 
-```{r eval=FALSE}
+```{r}
 #Initial exploration
 summary(df)
 sd(df$Sub_metering_1)
@@ -163,7 +163,6 @@ sum(df$Sub_metering_2)
 sum(df$Sub_metering_3)
 ```
 
-![](Summary_df.png)
 
 - Sub-meter 1 (Kitchen) has the highest maximum power usage, while Sub-meter 3 
 - (Water Heater and AC) has the highest total power usage.
@@ -177,7 +176,7 @@ sum(df$Sub_metering_3)
 - For this project, we reduce the granularity into every 10 minutes, 30 minutes, 40 minutes and 1 hour.
 -We plotted multiple power consumption plots by the different ways we filter the data, we wanted to see if we can get any useful insights from them.
 
-```{r eval=FALSE}
+```{r}
 ## Reduce the granularity to every 30 minutes
 df_30min <- as_period(df, '30 minute')
 
@@ -188,12 +187,16 @@ houseWeek <- filter(df, year == 2008,  week == 2)
 plot(houseWeek$Sub_metering_1)
 ```
 
-![](houseWeek.png)
 
 - First, we plotted the consumption of sub-meter 1 for second week of 2008.
 - Power consumption appears to peek during the weekend.
 
-```{r eval=FALSE}
+```{r}
+## First, we plotted the consumption of sub-meter 1 for second week of 2008.
+## Power consumption appears to peek during the weekend.
+
+## Subset the 9th day of January 2008 - All observations
+houseDay <- filter(df, year == 2008 & month == 1 & day == 9)
 ## Plot sub-meter 1, 2 and 3 with title, legend and labels - All observations 
 plot_ly(houseDay, x = ~houseDay$DateTime, y = ~houseDay$Sub_metering_1, name = 'Kitchen', type = 'scatter', mode = 'lines') %>%
   add_trace(y = ~houseDay$Sub_metering_2, name = 'Laundry Room', mode = 'lines') %>%
@@ -204,15 +207,13 @@ plot_ly(houseDay, x = ~houseDay$DateTime, y = ~houseDay$Sub_metering_1, name = '
 ```
 
 
-![](Power_consumption_Jan_9_08.png)
-
 - This plot visualize the power consumption for all 3 sub-meters of Jan 9th, 2008.
 - Kitchen power consumption peeked around 5pm and 6pm.
 - Water Heater and AC peeked in whole moning and at night.
 - Laundry Room was even through out the day, probably due to the light was on.
 
 
-```{r eval=FALSE}
+```{r}
 # Subset week 2 from year 2008 with 30 Minutes frequency
 week2_30min_fr <- filter(df, year == 2008 & month == 1 & week == 2 & (minute == 0 | minute == 30 ))
 
@@ -226,16 +227,13 @@ plot_ly(week2_30min_fr, x = ~week2_30min_fr$DateTime, y = ~week2_30min_fr$Sub_me
          yaxis = list (title = "Power (watt-hours)"))
 ```
 
-
-![](Power_consumption_week2_08.png)
-
 - This plot shows the power consumption of the second week of 2008 with a 30-minutes frequency.
 - Water Heater and AC consumption spread out evenly daily.
 - Laundry Room had the least consumption most of the time other than couple peeks, probably due to doing laundries.
 - Kitchen was also pretty consistent. The peeks apeared in the end of the day and the weekends, probably due to cooking.
 
 
-```{r eval=FALSE}
+```{r}
 ## Choose monthly time period and use 60 mins interval
 df_1hr <- as_period(df, "1 h")
 df_1hr
@@ -251,7 +249,6 @@ plot_ly(housemonth1hr, x = ~housemonth1hr$DateTime, y = ~housemonth1hr$Sub_meter
          yaxis = list (title = "Power (watt-hours)"))
 ```
 
-![](Power_consumption_Jan_08.png)
 
 
 - This plot shows the power consumption of January, 2008, with a 1-hour frequency.
@@ -262,3 +259,72 @@ plot_ly(housemonth1hr, x = ~housemonth1hr$DateTime, y = ~housemonth1hr$Sub_meter
 
 - Before we make a time-series plot, we need to create a time-series object so that the machine can recognize it as time series. We use ts() function to do so.
 - Again, we plotted multiple time series plots by the different ways we filter the data to see what insights we can get from them.
+
+```{r}
+# Subset to one observation per week on Mondays at 8:00pm for 2007, 2008 and 2009
+house070809weekly <- filter(df, day == "2" & hour == 20 & minute == 0)
+
+# Create TS object with SubMeter3
+tsSM3_070809weekly <- ts(house070809weekly$Sub_metering_3, frequency=52, 
+                         start=c(2007,1), end = c(2009,1))
+
+# Plot sub-meter 3 with plot.ts
+plot.ts(tsSM3_070809weekly, xlab = "Watt Hours", main = "Sub-meter 3, Mondays, 20:00", col="red")
+```
+- This Time-Series shows sub-meter 3 (Water Heater and A/C) at 8pm on every Monday from 2007 to 2009
+
+```{r}
+## Create a TS plot for Sub-meter 3 on Saturdays at 20:00
+house070809weeklySat <- filter(df, weekday == 'Saturday' & hour == 20 & minute == 0)
+house070809weeklySat
+tsSM3_070809weeklySat <- ts(house070809weeklySat$Sub_metering_3, 
+                         frequency=52, start=c(2007,1))
+tsSM3_070809weeklySat
+plot.ts(tsSM3_070809weekly, xlab = "Time", ylab = "Watt Hours", 
+        main = "Sub-meter 3, Saturdays, 20:00 ")
+```
+
+- This Time-Series shows sub-meter 3(Water Heater and AC) at 8pm on every Saturday from 2007 to 2009.
+
+```{r}
+## Create a TS plot for Sub-meter 1 on Saturdays at 20:00
+house070809weeklySat20 <- filter(df, weekday == 'Saturday' & hour == 20 &
+                                       minute == 0)
+tsSM1_070809weeklySat20 <- ts(house070809weeklySat20$Sub_metering_1,
+                            frequency = 52, start = c(2007,1))
+plot.ts(tsSM1_070809weeklySat20, xlab = "Time", ylab = "Watt Hours", 
+        main = "Sub-meter 1, Saturdays, 20:00 ")
+```
+
+- This Time-Series shows sub-meter 1(Kitchen) at 8pm on every Saturday from 2007 to 2009.
+
+```{r}
+## Create a TS plot for Sub-meter 2 in May, 2007, 2008, 2009
+house07Monthly <- filter(df, year == 2007 & month == 5 )
+tsSM2_07Monthly <- ts(house07Monthly$Sub_metering_2,
+                            frequency = 24)
+plot.ts(tsSM2_07Monthly, xlab = "Time", ylab = "Watt Hours", 
+        main = "Sub-meter 2, May, 2007")
+# May, 2008
+house08Monthly <- filter(df, year == 2008 & month == 5 )
+tsSM2_08Monthly <- ts(house08Monthly$Sub_metering_2,
+                      frequency = 24)
+plot.ts(tsSM2_08Monthly, xlab = "Time", ylab = "Watt Hours", 
+        main = "Sub-meter 2, May, 2008 ")
+# May, 2009
+house09Monthly <- filter(df, year == 2009 & month == 5 )
+tsSM2_09Monthly <- ts(house09Monthly$Sub_metering_2,
+                      frequency = 24)
+plot.ts(tsSM2_09Monthly, xlab = "Time", ylab = "Watt Hours", 
+        main = "Sub-meter 2, May, 2009 ")
+
+```
+
+- This Time-Series shows sub-meter 2(Laundry Room) in May, 2007.
+- This Time-Series shows sub-meter 2(Laundry Room) in May, 2008.
+- This Time-Series shows sub-meter 2(Laundry Room) in May, 2009.
+
+### Time-Series Insights
+
+- Power consumption of May in 2008 and first half of May in 2009 is considerably less than the consumption of May in 2007. Suggest to investigate the reasons and maybe there is possibility to save power in the future.
+- More insights could be drawn for each perticular time period.
